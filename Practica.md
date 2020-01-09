@@ -230,238 +230,7 @@ Console {
 }
 ~~~
 
-El fichero para esta práctica se forma de la siguiente manera:
-~~~
-Director { 
- Name = serranito-dir
- DIRport = 9101
- QueryFile = "/etc/bacula/scripts/query.sql"
- WorkingDirectory = "/var/lib/bacula"
- PidDirectory = "/run/bacula"
- Maximum Concurrent Jobs = 20
- Password = "bacula"
- Messages = Daemon
- DirAddress = 10.0.0.10
-}
-
-JobDefs {
- Name = "copias"
- Type = Backup
- Level = Incremental
- Client = serranito-fd
- FileSet = "copia-completa"
- Schedule = "periodo"
- Storage = File
- Messages = Standard
- Pool = File
- SpoolAttributes = yes
- Priority = 10
- Write Bootstrap = "/var/lib/bacula/%c.bsr"
-}
-
-Job {
- Name = "cp-serranito"
- JobDefs = "copias"
- Client = "serranito-fd"
-}
-
-Job {
- Name = "cp-croqueta"
- JobDefs = "copias"
- Client = "croqueta-fd"
-}
-
-Job {
- Name = "cp-salmorejo"
- JobDefs = "copias"
- Client = "salmorejo-fd"
-}
-
-Job {
- Name = "cp-tortilla"
- JobDefs = "copias"
- Client = "tortilla-fd"
-}
-
-Job {
- Name = "rest-serranito"
- Type = Restore
- Client=serranito-fd
- FileSet="copia-completa"
- Storage = File
- Pool = File
- Messages = Standard
-}
-
-Job {
- Name = "rest-croqueta"
- Type = Restore
- Client= croqueta-fd
- FileSet="copia-completa"
- Storage = File
- Pool = File
- Messages = Standard
-}
-
-Job {
- Name = "rest-salmorejo"
- Type = Restore
- Client= salmorejo-fd
- FileSet="copia-completa"
- Storage = File
- Pool = File
- Messages = Standard
-}
-
-Job {
- Name = "rest-tortilla"
- Type = Restore
- Client=tortilla-fd
- FileSet="copia-completa"
- Storage = File
- Pool = File
- Messages = Standard
-}
-
-FileSet {
- Name = "copia-completa"
- Include {
- Options {
- signature = MD5
- compression = GZIP
- }
- File = /home
- File = /etc
- File = /var
- }
- Exclude {
- File = /var/lib/bacula
- File = /nonexistant/path/to/file/archive/dir
- File = /proc
- File = /var/cache
- File = /var/tmp
- File = /tmp
- File = /sys
- File = /.journal
- File = /.fsck
- }
-}
-
-Schedule {
- Name = "periodo"
- Run = Level=Full 1st friday 23:00
- Run = Level=Incremental saturday at 23:00
-}
-
-Client {
- Name = serranito-fd
- Address = 10.0.0.10
- FDPort = 9102
- Catalog = MyCatalog
- Password = "bacula"
- File Retention = 60 days
- Job Retention = 6 months
- AutoPrune = yes
-}
-
-Client {
- Name = croqueta-fd
- Address = 10.0.0.3
- FDPort = 9102
- Catalog = MyCatalog
- Password = "bacula"
- File Retention = 60 days
- Job Retention = 6 months
- AutoPrune = yes
-}
-
-Client {
- Name = salmorejo-fd
- Address = 10.0.0.18
- FDPort = 9102
- Catalog = MyCatalog
- Password = "bacula"
- File Retention = 60 days
- Job Retention = 6 months
- AutoPrune = yes
-}
-
-Client {
- Name = tortilla-fd
- Address = 10.0.0.11
- FDPort = 9102
- Catalog = MyCatalog
- Password = "bacula"
- File Retention = 60 days
- Job Retention = 6 months
- AutoPrune = yes
-}
-
-Storage {
- Name = File
- Address = 10.0.0.10
- SDPort = 9103
- Password = "bacula"
- Device = FileStorage
- Media Type = File
-}
-
-Catalog {
- Name = MyCatalog
- dbname = "bacula"; DB Address = "localhost"; dbuser = "bacula"; dbpassword = "bacula"
-}
-
-Pool {
- Name = File
- Pool Type = Backup
- Recycle = yes
- AutoPrune = yes
- Volume Retention = 365 days
- Maximum Volume Bytes = 50G
- Maximum Volumes = 100
- Label Format = "Remoto"
-}
-
-Messages {
- Name = Standard
- mailcommand = "/usr/sbin/bsmtp -h localhost -f \"\(Bacula\) \<%r\>\" -s \"Bacula: %t %e of %c %l\" %r"
- operatorcommand = "/usr/sbin/bsmtp -h localhost -f \"\(Bacula\) \<%r\>\" -s \"Bacula: Intervention needed for %j\" %r"
- mail = root = all, !skipped
- operator = root = mount
- console = all, !skipped, !saved
- append = "/var/log/bacula/bacula.log" = all, !skipped
- catalog = all
-}
-
-Messages {
- Name = Daemon
- mailcommand = "/usr/sbin/bsmtp -h localhost -f \"\(Bacula\) \<%r\>\" -s \"Bacula daemon message\" %r"
- mail = root = all, !skipped
- console = all, !skipped, !saved
- append = "/var/log/bacula/bacula.log" = all, !skipped
-}
-
-Pool {
- Name = Default
- Pool Type = Backup
- Recycle = yes # Bacula can automatically recycle Volumes
- AutoPrune = yes # Prune expired volumes
- Volume Retention = 365 days # one year
- Maximum Volume Bytes = 50G # Limit Volume size to something reasonable
- Maximum Volumes = 100 # Limit number of Volumes in Pool
-}
-
-Pool {
- Name = Scratch
- Pool Type = Backup
-}
-
-Console {
- Name = grafana-mon
- Password = "bacula"
- CommandACL = status, .status
-}
-~~~
+El fichero que se va a utilizar en esta práctica tiene la configuración de este [enlace](enlace).
 
 Para chequear el fichero se utiliza el siguiente comando:
 ~~~
@@ -477,10 +246,64 @@ debian@serranito:~$ sudo service bacula-fd start
 
 
 #### Configuración del dispositivo de almacenamiento
+Se crea un volumen llamado copias_serranico con 10GiB de tamaño y se asocia a la máquina serranito.
+
+En la máquina serranito se configura el volumen para que sirva de almacenamiento. Este nuevo volumen aparece como /dev/vdb:
+~~~
+debian@serranito:~$ lsblk -f
+NAME FSTYPE LABEL UUID                                 FSAVAIL FSUSE% MOUNTPOINT
+vda                                                                   
+└─vda1
+     ext4         6197e068-a892-45cb-9672-a05813e800ee    7.8G    16% /
+vdb 
+
+debian@serranito:~$ sudo fdisk /dev/vdb
+
+Welcome to fdisk (util-linux 2.33.1).
+Changes will remain in memory only, until you decide to write them.
+Be careful before using the write command.
+
+Device does not contain a recognized partition table.
+Created a new DOS disklabel with disk identifier 0xc79c0e0f.
+Command (m for help): n
+Partition type
+   p   primary (0 primary, 0 extended, 4 free)
+   e   extended (container for logical partitions)
+Select (default p): p
+Partition number (1-4, default 1): 
+First sector (2048-20971519, default 2048): 
+Last sector, +/-sectors or +/-size{K,M,G,T,P} (2048-20971519, default 20971519): 
+
+Created a new partition 1 of type 'Linux' and of size 10 GiB.
+
+Command (m for help): w
+The partition table has been altered.
+Calling ioctl() to re-read partition table.
+Syncing disks.
+~~~
+
+Y se asigna un sistema de ficheros a la partición creada, en este caso será **ext4**:
+~~~
+debian@serranito:~$ sudo mkfs.ext4 /dev/vdb1
+mke2fs 1.44.5 (15-Dec-2018)
+Creating filesystem with 2621184 4k blocks and 655360 inodes
+Filesystem UUID: d567a8bc-42da-4834-a333-72fc6c40ee4b
+Superblock backups stored on blocks: 
+	32768, 98304, 163840, 229376, 294912, 819200, 884736, 1605632
+
+Allocating group tables: done                            
+Writing inode tables: done                            
+Creating journal (16384 blocks): done
+Writing superblocks and filesystem accounting information: done 
+~~~
+
+Después, se crea el directorio para bacula
+
+
 
 https://juanjoselo.wordpress.com/2017/12/27/instalacion-y-configuracion-de-sistema-de-copias-de-seguridad-con-bacula-en-debian-9/
 
-Configuración de dispositivo de almacenamiento de las copias
+Acto seguido crearemos un directorio en la raiz llamado bacula y en el crearemos una carpeta llamada backups al cual se vamos asignar el propietario de bacula y le cambiaremos los permisos.
 
 https://www.juanluramirez.com/sistema-de-copia-de-seguridad-bacula/
 
