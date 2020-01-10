@@ -15,7 +15,8 @@ Implementar un sistema de copias de seguridad para las instancias del cloud, ten
 La corrección consistirá tanto en la restauración puntual de un fichero en cualquier fecha como la restauración completa de una de las instancias la última semana de curso.
 
 ### Instancia como servidor de copias de seguridad
-Se crea una instancia que actuará como servidor para bacula a la que posteriormente se asociará un volumen donde se guardarán las copias de seguridad que se realizan de los otras 3 máquina, salmorejo, croqueta y tortilla. Esta instancia, serranito, será una Debian Buster. 
+Se utilizará una instancia con sistema operativo Ubuntu, tortilla, que actuará como servidor para bacula a la que posteriormente se asociará un volumen donde se guardarán las copias de seguridad que se realizan de las 3 máquina, salmorejo, croqueta y tortilla.
+
 
 ### Aplicación Bacula
 Para esta práctica se va a emplear la herramienta de copias de seguridad **Bacula** que funciona bajo una arquitectura cliente-servidor.
@@ -23,24 +24,24 @@ Para esta práctica se va a emplear la herramienta de copias de seguridad **Bacu
 Para la instalación de Bacula es necesaria un gestor de base de datos, en nuestro caso se va a utilizar MariaDB. 
 
 #### Webmin
-Pero en la práctica no solo se instalará el gestor de bases de datos, sino toda una pila LAMP ya que se va a utilizar **Webmin**, una herramienta, que no es necesaria,pero permite la congiruación del sistema vía web para sistemas Linux. De esta forma, la configuración de Bacula será más amigable. 
+Pero en la práctica no solo se instalará el gestor de bases de datos, sino toda una pila LAMP ya que se va a utilizar **Webmin**, una herramienta, que no es necesaria,pero permite la congiruación del sistema vía web para sistemas Linux. De esta forma, la configuración de Bacula será más amigable. Además de Apache2, debería estar instalada una base de datos, 
 ~~~
-debian@serranito:~$ sudo apt install apache2 mariadb-server mariadb-client php
+ubuntu@tortilla:~$ sudo apt install apache2  mariadb-client php
 ~~~
 
 Se continúa con la instalación de Webmin. En primer lugar se descarga desde su [página oficial](https://sourceforge.net/projects/webadmin/files/):
 ~~~
-debian@serranito:~$ wget http://prdownloads.sourceforge.net/webadmin/webmin_1.870_all.deb
+ubuntu@tortilla:~$ wget http://prdownloads.sourceforge.net/webadmin/webmin_1.870_all.deb
 ~~~
 
 Y se instala:
 ~~~
-debian@serranito:~$ sudo dpkg -i webmin_1.870_all.deb 
+ubuntu@tortilla:~$ sudo dpkg -i webmin_1.870_all.deb
 ~~~
 
 > Puede que en la instalación aparezcan errores de dependencias. En nuestro caso se han solventado con la instalación de las siguientes librerías:
 ~~~
-debian@serranito:~$ sudo apt install libnet-ssleay-perl libauthen-pam-perl libio-pty-perl apt-show-versions 
+ubuntu@tortilla:~$ sudo apt install libnet-ssleay-perl libauthen-pam-perl libio-pty-perl apt-show-versions
 ~~~
 
 Una vez instalado, ya está accesible Webmin desde la url que se indica al finalizar la instalación.
@@ -49,7 +50,7 @@ Una vez instalado, ya está accesible Webmin desde la url que se indica al final
 #### Instalación de Bacula
 A continuación, se va a realizar la instalación de los paquetes de Bacula que son los siguientes:
 ~~~
-debian@serranito:~$ sudo apt install bacula bacula-client bacula-common-mysql bacula-director-mysql bacula-server
+ubuntu@tortilla:~$ sudo apt install bacula bacula-client bacula-common-mysql bacula-director-mysql bacula-server
 ~~~
 
 En el proceso de instalación de **bacula-director-mysql** se pregutna si se quiere configurar la base de datos para bacula y su configuración.
@@ -297,8 +298,141 @@ Creating journal (16384 blocks): done
 Writing superblocks and filesystem accounting information: done 
 ~~~
 
-Después, se crea el directorio para bacula
 
+Después, se crea el directorio para bacula, que será la raíz de esta y cuyo propietario será bacula:
+~~~
+debian@serranito:~$ sudo mkdir /bacula
+debian@serranito:~$ sudo mount /dev/vdb1 /bacula
+debian@serranito:/bacula$ sudo chown bacula:bacula /bacula/backups/ -R
+debian@serranito:/bacula$ sudo chmod 755 /bacula/backups/ -R
+~~~
+
+Configuración de **/etc/fstab** para configurar el volumen montado:
+~~~
+UUID=d567a8bc-42da-4834-a333-72fc6c40ee4b	/bacula	ext4	defaults	0  0
+~~~
+
+Y se comprueba que se ha realizado correctamente:
+~~~
+debian@serranito:/bacula$ sudo mount -a
+debian@serranito:/bacula$ lsblk
+NAME   MAJ:MIN RM SIZE RO TYPE MOUNTPOINT
+vda    254:0    0  10G  0 disk 
+└─vda1 254:1    0  10G  0 part /
+vdb    254:16   0  10G  0 disk 
+└─vdb1 254:17   0  10G  0 part /bacula
+~~~
+
+### Configuración del fichero bacula-sd.conf
+En el fichero **/etc/bacula/bacula-sd.conf** se configura la el almacenamiento de las copias. La sintaxis del fichero es la siguiente:
+~~~
+Storage {
+  Name = <nombre_del_equipo>-sd
+  SDPort = <puerto>
+  WorkingDirectory = "<directorio de trabajo>"
+  Pid Directory = "/run/bacula"
+  Maximum Concurrent Jobs = 20
+  SDAddress = <ip>
+}
+Director { # llamamiendo al director que llama al daemon anterior
+ Name = <nombre_director>-dir
+ Password = "<contraseña>"
+}
+
+Director { # otorga permisos al director para ver el proceso
+ Name = <nombre_director>-mon
+ Password = "<contraseña>"
+ Monitor = yes
+}
+
+Autochanger { # cargador automático virtual del punto de almacenamiento
+ Name = <nombre_dispositivo_logico> # tiene que coinciddir con el atributo Device en bacula-dir.conf
+ Device = <dispositivo_montaje>
+ Changer Command = ""
+ Changer Device = /dev/null
+}
+
+Device { # declaración de los Devices del apartado anterior
+ Name = <nombre_disp_montage>
+ Media Type = <tipo>
+ Archive Device = <ruta_almacenamiento>
+ LabelMedia = yes; # lets Bacula label unlabeled media
+ Random Access = Yes;
+ AutomaticMount = yes; # when device opened, read it
+ RemovableMedia = no;
+ AlwaysOpen = no;
+ Maximum Concurrent Jobs = 5
+}
+
+Messages { # este último apartado sobre los mensajes se deja por defecto
+  Name = Standard
+  director = serranito-dir = all
+}
+~~~
+
+[Aquí](link) se encuentra el fichero configurado.
+
+Para comprobar que el fichero se ha configurado correctamente se introduce el siguiente comando, como en la configuración del fichero /etc/bacula/bacula-dir.conf, y si no devuelve nada es que se ha configurado correctamente:
+~~~
+debian@serranito:/bacula$ sudo bacula-sd -tc /etc/bacula/bacula-sd.conf
+~~~
+
+### Inicio de los servicios
+Se debe iniciar los servicios de -dir y -sd, se puede realizar a través de systemd:
+~~~
+debian@serranito:/bacula$ sudo systemctl restart bacula-sd.service
+debian@serranito:/bacula$ sudo systemctl restart bacula-director.service
+~~~
+
+Y se comprueba que los servicios se han iniciado correctamente y están activos:
+~~~
+debian@serranito:/bacula$ sudo systemctl status bacula-sd.service
+● bacula-sd.service - Bacula Storage Daemon service
+   Loaded: loaded (/lib/systemd/system/bacula-sd.service; enabled; vendor 
+   Active: active (running) since Thu 2020-01-09 17:32:30 UTC; 30s ago
+     Docs: man:bacula-sd(8)
+  Process: 10953 ExecStartPre=/usr/sbin/bacula-sd -t -c $CONFIG (code=exit
+ Main PID: 10957 (bacula-sd)
+    Tasks: 2 (limit: 1168)
+   Memory: 1.1M
+   CGroup: /system.slice/bacula-sd.service
+           └─10957 /usr/sbin/bacula-sd -fP -c /etc/bacula/bacula-sd.conf
+debian@serranito:/bacula$ sudo systemctl status bacula-director.service
+● bacula-director.service - Bacula Director Daemon service
+   Loaded: loaded (/lib/systemd/system/bacula-director.service; enabled; v
+   Active: active (running) since Thu 2020-01-09 17:32:39 UTC; 44s ago
+     Docs: man:bacula-dir(8)
+  Process: 10964 ExecStartPre=/usr/sbin/bacula-dir -t -c $CONFIG (code=exi
+ Main PID: 10967 (bacula-dir)
+    Tasks: 3 (limit: 1168)
+   Memory: 1.5M
+   CGroup: /system.slice/bacula-director.service
+           └─10967 /usr/sbin/bacula-dir -fP -c /etc/bacula/bacula-dir.conf
+~~~
+
+### Configuración del fichero bconsole
+La configuración del fichero **/etc/bacula/bconsole.conf** permite acceder a la consola. Se configura de la sigueitne forma:
+~~~
+Director {
+ Name = <nombre_director>
+ DIRport = <puerto>
+ address = <ip>
+ Password = <contraseña>
+}
+~~~
+
+En nuestro caso, el fichero termina configurado de la siguiente manera:
+~~~
+Director {
+  Name = serranito-dir
+  DIRport = 9101
+  address = 10.0.0.10
+  Password = "bacula"
+}
+~~~
+
+
+### Instalación en los clientes
 
 
 https://juanjoselo.wordpress.com/2017/12/27/instalacion-y-configuracion-de-sistema-de-copias-de-seguridad-con-bacula-en-debian-9/
@@ -309,6 +443,87 @@ https://www.juanluramirez.com/sistema-de-copia-de-seguridad-bacula/
 
 
 ### Selección de información
+Para la configuración en los clientes hay que instalar el paquete **bacula-client**.
+~~~
+debian@croqueta:~$ sudo apt install bacula-client
+~~~
+
+> Aunque en la práctica se va a realizar la configuración de 4 máquinas (2 Debian, 1 Ubuntu, 1 Centos), en este apartado se va a explicar la configuración en una máquina Debian, serranito, y se explicará las diferencias que puede haber en los demás sistemas.
+
+Configuración del fichero **/etc/bacula/bacula-fd.conf** para indicar los parámetros del director:
+~~~
+Director {
+ Name = serranito-dir
+ Password = "bacula"
+}
+
+Director {
+ Name = serranito-mon
+ Password = "bacula"
+ Monitor = yes
+}
+
+FileDaemon { # this is me
+ Name = serranito-fd
+ FDport = 9102 # where we listen for the director
+ WorkingDirectory = /var/lib/bacula # en Centos /var/spool/bacula
+ Pid Directory = /run/bacula # en Centos /var/run
+ Maximum Concurrent Jobs = 20
+ Plugin Directory = /usr/lib/bacula # esta opción no debe incluirse en Centos
+ FDAddress = 10.0.0.10 # esta opción no debe incluirse en centos
+}
+
+# Send all messages except skipped files back to Director
+Messages {
+ Name = Standard
+ director = grafana-dir = all, !skipped, !restored
+}
+~~~
+
+Tras configurar el fichero se inicia el servicio:
+~~~
+debian@serranito:/bacula$ sudo systemctl start bacula-fd
+~~~
+
+Cuando todos los clientes están configurados, los servicios inicidos y se ha comprobado que todos están activos se reinicia el servidor:
+~~~
+debian@serranito:/bacula$ sudo systemctl restart bacula-sd.service
+debian@serranito:/bacula$ sudo systemctl restart bacula-director.service
+debian@serranito:/bacula$ sudo systemctl restart bacula-fd.service
+~~~
+
+Se comprueba que los clientes se reconocen adecuadamente a través de la consola de bacula:
+~~~
+debian@serranito:/bacula$ sudo bconsole
+Connecting to Director 10.0.0.10:9101
+1000 OK: 103 serranito-dir Version: 9.4.2 (04 February 2019)
+Enter a period to cancel a command.
+*status client
+The defined Client resources are:
+     1: serranito-fd
+     2: croqueta-fd
+     3: salmorejo-fd
+     4: tortilla-fd
+Select Client (File daemon) resource (1-4): 1
+Connecting to Client serranito-fd at 10.0.0.10:9102
+
+serranito-fd Version: 9.4.2 (04 February 2019)  x86_64-pc-linux-gnu debian buster/sid
+Daemon started 09-Jan-20 18:24. Jobs: run=0 running=0.
+ Heap: heap=114,688 smbytes=22,008 max_bytes=22,025 bufs=68 max_bufs=68
+ Sizes: boffset_t=8 size_t=8 debug=0 trace=0 mode=0,0 bwlimit=0kB/s
+ Plugin: bpipe-fd.so 
+
+Running Jobs:
+Director connected at: 09-Jan-20 18:25
+No Jobs running.
+====
+
+Terminated Jobs:
+====
+You have messages.
+
+> Como este
+
 
 ### Programación de las copias completas
 
