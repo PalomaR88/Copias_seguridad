@@ -247,7 +247,7 @@ debian@serranito:~$ sudo service bacula-fd start
 
 
 #### Configuración del dispositivo de almacenamiento
-Se crea un volumen llamado copias_serranico con 10GiB de tamaño y se asocia a la máquina serranito.
+Se crea un volumen llamado copias_seguridad con 10GiB de tamaño y se asocia a la máquina serranito.
 
 En la máquina serranito se configura el volumen para que sirva de almacenamiento. Este nuevo volumen aparece como /dev/vdb:
 ~~~
@@ -434,14 +434,6 @@ Director {
 
 ### Instalación en los clientes
 
-
-https://juanjoselo.wordpress.com/2017/12/27/instalacion-y-configuracion-de-sistema-de-copias-de-seguridad-con-bacula-en-debian-9/
-
-Acto seguido crearemos un directorio en la raiz llamado bacula y en el crearemos una carpeta llamada backups al cual se vamos asignar el propietario de bacula y le cambiaremos los permisos.
-
-https://www.juanluramirez.com/sistema-de-copia-de-seguridad-bacula/
-
-
 ### Selección de información
 Para la configuración en los clientes hay que instalar el paquete **bacula-client**.
 ~~~
@@ -476,8 +468,16 @@ FileDaemon { # this is me
 # Send all messages except skipped files back to Director
 Messages {
  Name = Standard
- director = grafana-dir = all, !skipped, !restored
+ director = serranito-dir = all, !skipped, !restored
 }
+~~~
+
+> En la máquina Salmorejo, con CentOS, hay que configurar el firewall:
+~~~
+[centos@salmorejo ~]$ sudo firewall-cmd --zone=public --permanent --add-port 9102/tcp
+success
+[centos@salmorejo ~]$ sudo firewall-cmd --reload
+success
 ~~~
 
 Tras configurar el fichero se inicia el servicio:
@@ -494,7 +494,7 @@ debian@serranito:/bacula$ sudo systemctl restart bacula-fd.service
 
 Se comprueba que los clientes se reconocen adecuadamente a través de la consola de bacula:
 ~~~
-debian@serranito:/bacula$ sudo bconsole
+debian@serranito:~$ sudo bconsole
 Connecting to Director 10.0.0.10:9101
 1000 OK: 103 serranito-dir Version: 9.4.2 (04 February 2019)
 Enter a period to cancel a command.
@@ -502,27 +502,122 @@ Enter a period to cancel a command.
 The defined Client resources are:
      1: serranito-fd
      2: croqueta-fd
-     3: salmorejo-fd
-     4: tortilla-fd
+     3: tortilla-fd
+     4: salmorejo-fd
 Select Client (File daemon) resource (1-4): 1
 Connecting to Client serranito-fd at 10.0.0.10:9102
 
 serranito-fd Version: 9.4.2 (04 February 2019)  x86_64-pc-linux-gnu debian buster/sid
-Daemon started 09-Jan-20 18:24. Jobs: run=0 running=0.
- Heap: heap=114,688 smbytes=22,008 max_bytes=22,025 bufs=68 max_bufs=68
+Daemon started 11-Jan-20 18:36. Jobs: run=0 running=0.
+ Heap: heap=114,688 smbytes=22,012 max_bytes=22,029 bufs=68 max_bufs=68
  Sizes: boffset_t=8 size_t=8 debug=0 trace=0 mode=0,0 bwlimit=0kB/s
  Plugin: bpipe-fd.so 
 
 Running Jobs:
-Director connected at: 09-Jan-20 18:25
+Director connected at: 11-Jan-20 18:37
 No Jobs running.
 ====
 
 Terminated Jobs:
 ====
 You have messages.
+*2
+2: is an invalid command.
+*status client
+The defined Client resources are:
+     1: serranito-fd
+     2: croqueta-fd
+     3: tortilla-fd
+     4: salmorejo-fd
+Select Client (File daemon) resource (1-4): 2
+Connecting to Client croqueta-fd at 10.0.0.3:9102
 
-> Como este
+croqueta-fd Version: 9.4.2 (04 February 2019)  x86_64-pc-linux-gnu debian buster/sid
+Daemon started 11-Jan-20 18:36. Jobs: run=0 running=0.
+ Heap: heap=114,688 smbytes=22,010 max_bytes=22,027 bufs=68 max_bufs=68
+ Sizes: boffset_t=8 size_t=8 debug=0 trace=0 mode=0,0 bwlimit=0kB/s
+ Plugin: bpipe-fd.so 
+
+Running Jobs:
+Director connected at: 11-Jan-20 18:37
+No Jobs running.
+====
+
+Terminated Jobs:
+====
+*status client
+The defined Client resources are:
+     1: serranito-fd
+     2: croqueta-fd
+     3: tortilla-fd
+     4: salmorejo-fd
+Select Client (File daemon) resource (1-4): 3
+Connecting to Client tortilla-fd at 10.0.0.11:9102
+
+tortilla-fd Version: 9.0.6 (20 November 2017) x86_64-pc-linux-gnu ubuntu 18.04
+Daemon started 11-Jan-20 18:36. Jobs: run=0 running=0.
+ Heap: heap=110,592 smbytes=21,981 max_bytes=21,998 bufs=68 max_bufs=68
+ Sizes: boffset_t=8 size_t=8 debug=0 trace=0 mode=0,0 bwlimit=0kB/s
+ Plugin: bpipe-fd.so 
+
+Running Jobs:
+Director connected at: 11-Jan-20 19:05
+No Jobs running.
+====
+
+Terminated Jobs:
+====
+*status client
+The defined Client resources are:
+     1: serranito-fd
+     2: croqueta-fd
+     3: tortilla-fd
+     4: salmorejo-fd
+Select Client (File daemon) resource (1-4): 4
+Connecting to Client salmorejo-fd at 10.0.0.18:9102
+
+salmorejo-fd Version: 9.0.6 (20 November 2017) x86_64-redhat-linux-gnu redhat (Core)
+Daemon started 11-Jan-20 18:36. Jobs: run=0 running=0.
+ Heap: heap=102,400 smbytes=21,984 max_bytes=22,001 bufs=68 max_bufs=68
+ Sizes: boffset_t=8 size_t=8 debug=0 trace=0 mode=0,0 bwlimit=0kB/s
+ Plugin: bpipe-fd.so 
+
+Running Jobs:
+Director connected at: 11-Jan-20 19:06
+No Jobs running.
+====
+
+Terminated Jobs:
+====
+~~~
+
+Para añadir el nombre al volumen e identificarlo:
+~~~
+debian@serranito:/bacula$ sudo bconsole
+Connecting to Director 10.0.0.10:9101
+1000 OK: 103 serranito-dir Version: 9.4.2 (04 February 2019)
+Enter a period to cancel a command.
+*label
+Automatically selected Catalog: mysql-bacula
+Using Catalog "mysql-bacula"
+Automatically selected Storage: Vol-Serranito
+Enter new Volume name: backups
+Defined Pools:
+     1: Default
+     2: File
+     3: Scratch
+     4: Vol-Backup
+Select the Pool (1-4): 4
+Connecting to Storage daemon Vol-Serranito at 10.0.0.10:9103 ...
+Sending label command for Volume "backups" Slot 0 ...
+3000 OK label. VolBytes=226 VolABytes=0 VolType=1 Volume="backups" Device="DispositivoCopia" (/bacula/backups)
+Catalog record for Volume "backups", Slot 0  successfully created.
+Requesting to mount FileAutochanger1 ...
+3906 File device ""DispositivoCopia" (/bacula/backups)" is always mounted.
+You have messages.
+~~~
+
+
 
 
 ### Programación de las copias completas
