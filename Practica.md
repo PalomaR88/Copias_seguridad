@@ -17,43 +17,26 @@ La corrección consistirá tanto en la restauración puntual de un fichero en cu
 ### Instancia como servidor de copias de seguridad
 Se utilizará una instancia con sistema operativo Ubuntu, tortilla, que actuará como servidor para bacula a la que posteriormente se asociará un volumen donde se guardarán las copias de seguridad que se realizan de las 3 máquina, salmorejo, croqueta y tortilla.
 
+### Programación de las copias
+Se ha decidido que se realizarán tres tipos de copias:
+- Copias diarias e incrementales, que se borrarán a los 14 días.
+- Copias semanales y completas, que se borrarán al mes.
+- Copias mensuales y completas, que se borrarán al año.
+
+Como se ha decidido borrar las parciales por día se va a utilizar la opción de copias incrementales ya que para la opción de copias diferenciales se necesita guardar todas las diferenciales que se hayan hecho desde el último full. 
 
 ### Aplicación Bacula
 Para esta práctica se va a emplear la herramienta de copias de seguridad **Bacula** que funciona bajo una arquitectura cliente-servidor.
 
-Para la instalación de Bacula es necesaria un gestor de base de datos, en nuestro caso se va a utilizar MariaDB. 
-
-#### Webmin
-Pero en la práctica no solo se instalará el gestor de bases de datos, sino toda una pila LAMP ya que se va a utilizar **Webmin**, una herramienta, que no es necesaria,pero permite la congiruación del sistema vía web para sistemas Linux. De esta forma, la configuración de Bacula será más amigable. Además de Apache2, debería estar instalada una base de datos, 
-~~~
-ubuntu@tortilla:~$ sudo apt install apache2  mariadb-client php
-~~~
-
-Se continúa con la instalación de Webmin. En primer lugar se descarga desde su [página oficial](https://sourceforge.net/projects/webadmin/files/):
-~~~
-ubuntu@tortilla:~$ wget http://prdownloads.sourceforge.net/webadmin/webmin_1.870_all.deb
-~~~
-
-Y se instala:
-~~~
-ubuntu@tortilla:~$ sudo dpkg -i webmin_1.870_all.deb
-~~~
-
-> Puede que en la instalación aparezcan errores de dependencias. En nuestro caso se han solventado con la instalación de las siguientes librerías:
-~~~
-ubuntu@tortilla:~$ sudo apt install libnet-ssleay-perl libauthen-pam-perl libio-pty-perl apt-show-versions
-~~~
-
-Una vez instalado, ya está accesible Webmin desde la url que se indica al finalizar la instalación.
-
+Para la instalación de Bacula es necesaria un gestor de base de datos, en nuestro caso se va a utilizar **MariaDB**. 
 
 #### Instalación de Bacula
-A continuación, se va a realizar la instalación de los paquetes de Bacula que son los siguientes:
+Para la instalación son necesarios los siguientes paquetes de Bacula:
 ~~~
 ubuntu@tortilla:~$ sudo apt install bacula bacula-client bacula-common-mysql bacula-director-mysql bacula-server
 ~~~
 
-En el proceso de instalación de **bacula-director-mysql** se pregutna si se quiere configurar la base de datos para bacula y su configuración.
+En el proceso de instalación de **bacula-director-mysql** se pregunta si se quiere configurar la base de datos para bacula y su configuración.
 ~~~
  ┌────────────────┤ Configuring bacula-director-mysql ├────────────────┐
  │                                                                     │ 
@@ -88,150 +71,136 @@ En el proceso de instalación de **bacula-director-mysql** se pregutna si se qui
  └─────────────────────────────────────────────────────────────────────┘ 
  ~~~
 
-#### Configuración de Bacula
-Por último hay que configurar el fichero **/etc/bacula/bacula-dir.conf** donde se indica los parámetros más importantes para las copias de la siguiente forma:
+
+#### Configuración del fichero /etc/bacula/bacula-dir.conf
+En el fichero **/etc/bacula/bacula-dir.conf** se indica los parámetros más importantes para las copias a través de los siguientes apartados:
+- Director: Indica los atributos de la máquina director
 ~~~
-Director { # se define a sí mismo
- Name = <nombre_director>
- DIRport = <puerto> # where we listen for UA connections
- QueryFile = "/etc/bacula/scripts/query.sql"
- WorkingDirectory = "/var/lib/bacula"
- PidDirectory = "/run/bacula"
- Maximum Concurrent Jobs = 20
- Password = "<contraseña_director>"
- Messages = Daemon
- DirAddress = <ip_maquina_director>
+Director {
+  Name = serranito-dir #Nombre que va a user el administrador del sistema.
+  DIRport = 9101 #Puerto
+  QueryFile = "/etc/bacula/scripts/query.sql" #Ruta donde se encuentran las sentendias SQL
+  WorkingDirectory = "/var/lib/bacula" #Ruta donde el director coloca sus ficheros de estado.
+  PidDirectory = "/run/bacula" #Ruta donde el director coloca sus fichero Id.
+  Maximum Concurrent Jobs = 20 #Número máximo de trabajos a la vez
+  Password = "bacula" #Contraseña
+  Messages = Daemon #Indica el recurso mensaje, nombre de otro apartado
+  DirAddress = 10.0.0.10 #Dirección del director
 }
+~~~
 
-JobDefs { # definición de tarea
- Name = "<nombre_tarea>"
- Type = <tipo_tarea> # backup para copias
- Level = <nivel_tarea> # por defecto Incremental
- Client = <cliente_donde_ejecutar>
- FileSet = "<nombre_info_copiara>" # se define en el apartado FileSet
- Schedule = "<nombre_programación>" # se define a continuación
- Storage = <cargador_virtual_automático> # se define a continuación
- Messages = Standard
- Pool = <nombre_apartado> # se define a continuación el volumen 
+- Job: definición de los trabajos. Se configurarán un apartado para cada máquina y tipo de copia, y además un apartado para cada máquina para los recursos.
+~~~
+Job {
+ Name = "Backup-dia-Serranito" #Nombre del trabajo
+ Client = "serranito-fd" #Nombre del cliente sobre el que ejecutar el trabajo
+ Type = Backup #Tipo: Backup, Restore, Verify, Admin, Migration, Copy
+ Level = Incremental #Full, Incremental, Differential, VirtualFull...
+ Pool = "Daily" #Nombre del apartado donde se define el grupo de volúmenes
+ FileSet = "CopiaSerranito" #Nombre del apartado donde se especifica el conjunto de ficheros que se utilizarán
+ Schedule = "Programa" #Nombre del apartado donde se define la programación para el trabajo
+ Storage = Vol-Serranito # Nombre del apartado donde se define el almacenamiento
+ Messages = Standard #Nombre del recurso de mensajes que va a user este trabajo
  SpoolAttributes = yes
- Priority = <numero_prioridad>
- Write Bootstrap = "<fichero_bacula>" # por defecto "/var/lib/bacula/%c.bsr"
+ Priority = 10 #Número que indica la prioridad
+ Write Bootstrap = "/var/lib/bacula/%c.bsr" #Ruta donde Bacula escribirá un archivo bootstrap
 }
+~~~
 
-Job { # definición de clientes en los que trabajar
- Name = "<nombre_job>"
- JobDefs = "<nombre_tarea>"
- Client = "<nombre_cliente>"
-}
-
-Job { # definición en los clientes donde se restaura
- Name = "<nombre_tarea>"
- Type = <tipo_tarea> # Restore para restaurar
- Client= <nombre_cliente>
- FileSet= "<nombre_info_copiara>"
- Storage = <cargador_virtual_automático>
- Pool = <nombre_apartado>
- Messages = Standard
-}
-
-FileSet { # tipo de copia, contenido y forma de compresión
- Name = "<nombre_info_copiara>"
- Include {
-          Options {
-                   signature = <tipo_encriptado>
-                   compression = <tipo_almacenamiento>
-          }
-          File = <rutas_que_copiar>
+- FileSet: Indica los ficheros que se incluirán o excluirán en los trabajos donde este aparezca. Se van a configurar cuatro apartados, uno para cada máquina. Un ejemplo:
+~~~
+FileSet {
+ Name = "CopiaCroqueta" #Nombre del apartado FileSet
+ Include { #Ficheros a incluir
+    Options { #Las opciones son obligatorios
+        signature = MD5 #Se calculará una firma MD5 para todos los archivos guardados.
+        compression = GZIP #Se usuará todos los ficheros usando GZIP 
+    }
+    File = /home
+    File = /etc
+    File = /var
  }
- Exclude {
-          File = <turas_que_excluye>
-         }
+ Exclude { #Ficheros a excluir dentro de los ficheros que se han especificado anteriomente.
+    File = /var/lib/bacula
+    File = /nonexistant/path/to/file/archive/dir
+    File = /proc
+    File = /var/tmp
+    File = /tmp
+    File = /sys
+    File = /.journal
+    File = /.fsck
+ }
 }
+~~~
 
-Schedule { # tipo de programación - cuándo
- Name = "<nombre_programación>"
- Run = Level=<tipo> <periodo>
+- Schedule: Medio para programar los trabajos.
+~~~
+Schedule {
+ Name = "Programa" #Nombre del apartado
+ Run = Level=Full Pool=Monthly 1st sat at 23:59 #Indica cuando se va a iniciar un trabajo y el label
+ Run = Level=Full Pool=Weekly 2nd-5th sat at 23:59
+ Run = Level=Incremental Pool=Daily sun-fri at 23:59
 }
+~~~
 
-Client { # definición de los clientes
- Name = <nombre_cliente>
- Address = <ip_máquina_cliente>
- FDPort = <puerto>
- Catalog = <nombre_catálogo>
- Password = <contraseña_cliente>
- File Retention = <tiempo_retención_fichero> #registro fichero en la BD del cat
- Job Retention = <tiempo_retención_tearea> #registro tareas en la BD del cat
- AutoPrune = yes # auto expirado en Jobs/Files
+- Client: En cada apartado se define un cliente, por lo tanto, hemos configurado 4 apartados Client. Ejemplo:
+~~~
+Client {
+ Name = serranito-fd #Nombre para definir al cliente
+ Address = 10.0.0.10 #Dirección del cliente
+ FDPort = 9102 #Puerto
+ Catalog = mysql-bacula #Indica el nombre del catálogo de la base de datos que va a usar el cliente
+ Password = "bacula" 
+ File Retention = 90 days #Periodo en el que el fichero va a estar grabado en el catalogo de la base de datos
+ Job Retention = 6 months # Periodo en el que el trabajo va a estar grabado en el catalogo de la base de datos
+ AutoPrune = yes # Para aplicar automáticamente el File Retention y el Job Retention al finalizar el trabajo.
 }
+~~~
 
-Storage { # tipo de almacenamiento
- Name = <cargador_virtual_automático>
- Address = <ip_almacenamiento> # no utilizar 'localhost'
- SDPort = <puerto>
- Password = <contraseña_dir>
- Device = <nombre_dipositivo_lógico> # se especifica a continuación
- Media Type = <tipo_de_medio>
+- Storage: Define los demonios de almacenamiento.
+~~~
+Storage {
+ Name = Vol-Serranito #Nombre del apartado.
+ Address = 10.0.0.10 #Dirección de la máquina que contiene el volumen
+ SDPort = 9103
+ Password = "bacula"
+ Device = FileAutochanger1 #Nombre del demonio de almacenamiento del recurso del dispositivo que utilizará.
+ Media Type = File #Indica el tipo de medio
+ Maximum Concurrent Jobs = 10 #Número máximo de trabajos en el almacenamiento a la vez.
 }
+~~~
 
+- Catalog: Define qué catálogo utiliza para el trabajo actual.
+~~~
 Catalog {
- Name = <nombre_catálogo>
- dbname = "<nombre_BD>"; DB Address = <dirección_BD>; dbuser = "<usuario_BD>"; dbpassword = "<contraseña>"
+ Name = mysql-bacula #Nombre del catálogo
+ dbname = "bacula"; DB Address = "localhost"; dbuser = "bacula"; dbpassword = "bacula" #Especificaciones de la base de datos
 }
+~~~
 
+- Pool: Conjunto de volúmenes de almacenamiento que Bacula utilizará para escribir los datos. Se han creado 3, según el tiempo que van a estar disponibles estas copias.
+~~~
 Pool {
- Name = File
- Pool Type = Backup
- Recycle = yes # reciclar volúmenes
- AutoPrune = yes # Auto expirado de volumnes
- Volume Retention = <periodo_retención>
- Maximum Volume Bytes = <límite_tamaño
- Maximum Volumes = <límite_número_volumen>
+ Name = Daily
+ Pool Type = Backup #Tipo de trabajo que se va a ejecutar
+ Recycle = yes #Indica si los volúmenes se pueden reciclar
+ AutoPrune = yes
+ Volume Retention = 14d
+ Maximum Volumes = 10
  Label Format = "Remoto"
 }
+~~~
 
-# Los demás apartados se dejan por defecto
-Messages {
- Name = Standard
- mailcommand = "/usr/sbin/bsmtp -h localhost -f \"\(Bacula\) \<%r\>\" -s \"Bacula: %t %e of %c %l\" %r"
- operatorcommand = "/usr/sbin/bsmtp -h localhost -f \"\(Bacula\) \<%r\>\" -s \"Bacula: Intervention needed for %j\" %r"
- mail = root = all, !skipped
- operator = root = mount
- console = all, !skipped, !saved
- append = "/var/log/bacula/bacula.log" = all, !skipped
- catalog = all
-}
-
-Messages {
- Name = Daemon
- mailcommand = "/usr/sbin/bsmtp -h localhost -f \"\(Bacula\) \<%r\>\" -s \"Bacula daemon message\" %r"
- mail = root = all, !skipped
- console = all, !skipped, !saved
- append = "/var/log/bacula/bacula.log" = all, !skipped
-}
-
-Pool {
- Name = Default
- Pool Type = Backup
- Recycle = yes # Bacula can automatically recycle Volumes
- AutoPrune = yes # Prune expired volumes
- Volume Retention = 365 days # one year
- Maximum Volume Bytes = 50G # Limit Volume size to something reasonable
- Maximum Volumes = 100 # Limit number of Volumes in Pool
-}
-
-Pool {
- Name = Scratch
- Pool Type = Backup
-}
-
+- Console: Indica las opciones de la consola:
+~~~
 Console {
- Name = grafana-mon
+ Name = serranito-mon
  Password = "bacula"
  CommandACL = status, .status
 }
 ~~~
 
-El fichero que se va a utilizar en esta práctica tiene la configuración de este [enlace](enlace).
+El fichero que se va a utilizar en esta práctica tiene la configuración de este [enlace](https://github.com/PalomaR88/Copias_seguridad/blob/master/bacula-dir.conf).
 
 Para chequear el fichero se utiliza el siguiente comando:
 ~~~
@@ -298,15 +267,6 @@ Creating journal (16384 blocks): done
 Writing superblocks and filesystem accounting information: done 
 ~~~
 
-
-Después, se crea el directorio para bacula, que será la raíz de esta y cuyo propietario será bacula:
-~~~
-debian@serranito:~$ sudo mkdir /bacula
-debian@serranito:~$ sudo mount /dev/vdb1 /bacula
-debian@serranito:/bacula$ sudo chown bacula:bacula /bacula/backups/ -R
-debian@serranito:/bacula$ sudo chmod 755 /bacula/backups/ -R
-~~~
-
 Configuración de **/etc/fstab** para configurar el volumen montado:
 ~~~
 UUID=d567a8bc-42da-4834-a333-72fc6c40ee4b	/bacula	ext4	defaults	0  0
@@ -323,59 +283,82 @@ vdb    254:16   0  10G  0 disk
 └─vdb1 254:17   0  10G  0 part /bacula
 ~~~
 
-### Configuración del fichero bacula-sd.conf
-En el fichero **/etc/bacula/bacula-sd.conf** se configura la el almacenamiento de las copias. La sintaxis del fichero es la siguiente:
+Después, se crea el directorio para bacula, que será la raíz de esta y cuyo propietario será bacula:
 ~~~
-Storage {
-  Name = <nombre_del_equipo>-sd
-  SDPort = <puerto>
-  WorkingDirectory = "<directorio de trabajo>"
-  Pid Directory = "/run/bacula"
-  Maximum Concurrent Jobs = 20
-  SDAddress = <ip>
+debian@serranito:~$ sudo mkdir /bacula
+debian@serranito:~$ sudo mount /dev/vdb1 /bacula
+debian@serranito:/bacula$ sudo chown bacula:bacula /bacula/backups/ -R
+debian@serranito:/bacula$ sudo chmod 755 /bacula/backups/ -R
+~~~
+
+#### Configuración del fichero bacula-sd.conf
+En el fichero **/etc/bacula/bacula-sd.conf** se configura la el almacenamiento de las copias. Los atributos de este fichero deben de corresponder con los atributos insdicados en el fichero que se configuró anteriormente, bacula-dir.conf. La sintaxis es la siguiente:
+
+-Storage: Define el demonio del almacenamiento que usará el director:
+~~~
+Storage { 
+ Name = serranito-sd 
+ SDPort = 9103 o
+ WorkingDirectory = "/var/lib/bacula" 
+ Pid Directory = "/run/bacula" 
+ Maximum Concurrent Jobs = 20
+ SDAddress = 10.0.0.10
 }
-Director { # llamamiendo al director que llama al daemon anterior
- Name = <nombre_director>-dir
- Password = "<contraseña>"
+~~~
+
+- Director: Define el director. En nuestro caso, se han definido dos directores, serranito-dir y serranito-mon para la consola.
+~~~
+Director {
+ Name = serranito-dir
+ Password = "bacula"
 }
 
-Director { # otorga permisos al director para ver el proceso
- Name = <nombre_director>-mon
- Password = "<contraseña>"
+
+Director {
+ Name = serranito-mon
+ Password = "bacula"
  Monitor = yes
 }
+~~~
 
-Autochanger { # cargador automático virtual del punto de almacenamiento
- Name = <nombre_dispositivo_logico> # tiene que coinciddir con el atributo Device en bacula-dir.conf
- Device = <dispositivo_montaje>
+- Autochanger y Device: Debe coincidir la configuración con el apartado Storage de bacula-dir.conf:
+~~~
+Autochanger {
+ Name = FileAutochanger1
+ Device = DispositivoCopia
  Changer Command = ""
  Changer Device = /dev/null
 }
 
-Device { # declaración de los Devices del apartado anterior
- Name = <nombre_disp_montage>
- Media Type = <tipo>
- Archive Device = <ruta_almacenamiento>
- LabelMedia = yes; # lets Bacula label unlabeled media
+Device {
+ Name = DispositivoCopia
+ Media Type = File
+ Archive Device = /bacula/backups
+ LabelMedia = yes;
  Random Access = Yes;
- AutomaticMount = yes; # when device opened, read it
+ AutomaticMount = yes;
  RemovableMedia = no;
  AlwaysOpen = no;
  Maximum Concurrent Jobs = 5
 }
+~~~
 
-Messages { # este último apartado sobre los mensajes se deja por defecto
+El último apartado es Messages, donde se especifica el director:
+~~~
+Messages {
   Name = Standard
   director = serranito-dir = all
 }
 ~~~
 
-[Aquí](link) se encuentra el fichero configurado.
+[Aquí](https://github.com/PalomaR88/Copias_seguridad/blob/master/bacula-sd.conf) se encuentra el fichero configurado.
 
 Para comprobar que el fichero se ha configurado correctamente se introduce el siguiente comando, como en la configuración del fichero /etc/bacula/bacula-dir.conf, y si no devuelve nada es que se ha configurado correctamente:
 ~~~
 debian@serranito:/bacula$ sudo bacula-sd -tc /etc/bacula/bacula-sd.conf
 ~~~
+
+
 
 ### Inicio de los servicios
 Se debe iniciar los servicios de -dir y -sd, se puede realizar a través de systemd:
@@ -433,8 +416,6 @@ Director {
 
 
 ### Instalación en los clientes
-
-### Selección de información
 Para la configuración en los clientes hay que instalar el paquete **bacula-client**.
 ~~~
 debian@croqueta:~$ sudo apt install bacula-client
@@ -617,19 +598,3 @@ Requesting to mount FileAutochanger1 ...
 You have messages.
 ~~~
 
-
-
-
-### Programación de las copias completas
-
-### Programación de la copias incrementales/diferenciales
-
-### Almacenamiento
-
-### Sistema de copias a coconut
-
-### Datos críticos
-
-### Incorporación de los nuevos datos
-
-### Equipo secundario
