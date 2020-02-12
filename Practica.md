@@ -598,3 +598,9 @@ Requesting to mount FileAutochanger1 ...
 You have messages.
 ~~~
 
+### Copia de paquetes
+sudo dpkg --get-selections>paquetes.txt
+
+sudo dpkg --set-selections < paquetes.txt 
+sudo dselect
+
