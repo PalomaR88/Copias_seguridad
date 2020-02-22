@@ -599,8 +599,80 @@ You have messages.
 ~~~
 
 ### Copia de paquetes
+Para saber los paquetes que se tiene en cada máquina se va a crear un script que cree un fichero donde se guarden todos los paquetes intalados y se ejecute con cron.
+
+El script será **/var/script/listarPaquetes.sh** con el siguiente contenido:
+~~~
+#!/bin/bash
+
+sudo dpkg --get-selections > /var/script/paquetes.txt
+~~~
+
+Y se modifican los permisos para otorgarle al script permiso de ejecución:
+~~~
+debian@croqueta:~$ sudo chmod 744 /var/script/listarPaquetes.sh 
+~~~
+
+> En Salmorejo, por ser CentOS su sitema operativo se sustituye la línea **sudo dpkg --get-selections>/home/.paquetes/paquetes.txt** por **sudo rpm -qa>/home/.paquetes/paquetes.txt**.
+
+A continuación, se ejecuta cron y modifica para programar la ejecución del script:
+~~~
+debian@serranito:~$ sudo crontab -e
+~~~
+
+~~~
+50 23 * * * /var/script/listarPaquetes.sh
+~~~
+
+Y se restaura cron:
+~~~
+debian@serranito:~$ sudo systemctl restart cron.service
+~~~
+
+> Para restaurar el servicio en CentOS se sustituye **cron.service** por **crond**.
+
+Para ver las programaciones de cron:
+~~~
+debian@serranito:~$ sudo crontab -l
+# Edit this file to introduce tasks to be run by cron.
+# 
+# Each task to run has to be defined through a single line
+# indicating with different fields when the task will be run
+# and what command to run for the task
+# 
+# To define the time you can provide concrete values for
+# minute (m), hour (h), day of month (dom), month (mon),
+# and day of week (dow) or use '*' in these fields (for 'any').
+# 
+# Notice that tasks will be started based on the cron's system
+# daemon's notion of time and timezones.
+# 
+# Output of the crontab jobs (including errors) is sent through
+# email to the user the crontab file belongs to (unless redirected).
+# 
+# For example, you can run a backup of all your user accounts
+# at 5 a.m every week with:
+# 0 5 * * 1 tar -zcf /var/backups/home.tgz /home/
+# 
+# For more information see the manual pages of crontab(5) and cron(8)
+# 
+# m h  dom mon dow   command
+
+00 23 * * * /var/script/listarPaquetes.sh
+~~~
+
+
+.......................................................
 sudo dpkg --get-selections>paquetes.txt
 
 sudo dpkg --set-selections < paquetes.txt 
 sudo dselect
 
+
+Si queremos restaurar una máquina en un futuro por un fallo, tendremos que restaurar la copia, en la cual se encontrará el fichero paquetes.txt. Con este fichero podremos instalar los paquetes con el comando dselect.
+
+sudo apt install dselect
+sudo dpkg --set-selections < paquetes.txt
+sudo dselect
+
+Y se nos instalarían todos los paquetes que teniamos antes del fallo.
