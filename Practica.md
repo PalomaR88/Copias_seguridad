@@ -676,3 +676,12 @@ sudo dpkg --set-selections < paquetes.txt
 sudo dselect
 
 Y se nos instalarían todos los paquetes que teniamos antes del fallo.
+
+
+## Restaurar
+Para restaurar una máquina completa de Bácula hay que:
+- Crear una nueva instancia con las mismas características que la borrada.
+- Se instala en la nueva máquina bácula y configurarla con las características de una máquina cliente. 
+- En el servidor de bácula hay que modificar la dirección interna, ya que ha cambiado con la nueva máquina.
+- Hay que restaurar la copia FULL, desde el servidor, en la nueva máquina. 
+- Y por último, se instala los paquetes utilizando el fichero paquetes.txt. 
